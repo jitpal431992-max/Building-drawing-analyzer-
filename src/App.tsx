@@ -12,6 +12,7 @@ import {
   Printer,
   Loader2,
 } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 import { DSRMasterItem, DSRVariantItem, BOQItem, ReviewState, ViewMode, FilterOptions, InventoryRow } from './types';
 import {
   getItemTypesByCategory,
@@ -1353,6 +1354,7 @@ export default function App() {
           />
         )}
       </Suspense>
+      <Analytics />
     </div>
   );
 }
