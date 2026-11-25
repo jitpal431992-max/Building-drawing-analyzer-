@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CPWD DSR (E&M) 2025 Explorer &amp; Schedule Reviewer</title>
+    <meta name="description" content="Explore, categorize, review, edit, tag, and generate Bill of Quantities (BOQ) from CPWD Delhi Schedule of Rates (E&M) 2025." />
+    <meta property="og:title" content="CPWD DSR (E&M) 2025 Explorer &amp; Schedule Reviewer" />
+    <meta property="og:description" content="Explore, categorize, review, edit, tag, and generate Bill of Quantities (BOQ) from CPWD Delhi Schedule of Rates (E&M) 2025." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('cpwd_dsr_theme');
+          var theme = t === 'light' ? 'light' : 'dark';
+          var root = document.documentElement;
+          if (theme === 'dark') {
+            root.classList.add('dark');
+            root.style.colorScheme = 'dark';
+          } else {
+            root.classList.remove('dark');
+            root.style.colorScheme = 'light';
+          }
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

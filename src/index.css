@@ -1,0 +1,222 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: #f4f6f9;
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .dark body {
+    background-color: #0c1017;
+    color: #e2e8f0;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Custom scrollbars for clean engineering UI */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 14mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 9.5pt !important;
+    line-height: 1.4 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide navigation, filters, sidebars, and card views when printing */
+  header,
+  nav,
+  aside,
+  .no-print,
+  .dsr-card,
+  .print-hide-card {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Switch layout to a clean single-column A4 document view */
+  main {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-single-column,
+  main .grid {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .print-single-column > *,
+  main .grid > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  /* Strip dark card styling and decorative shadows for clean paper output */
+  main [class*="rounded-"],
+  main [class*="shadow-"] {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  main [class*="max-h-"],
+  main [class*="overflow-y-auto"] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  main [class*="bg-slate-"],
+  main [class*="bg-\\[#"] {
+    background-color: transparent !important;
+  }
+
+  /* Optimize A4 paper typographic hierarchy */
+  h1 {
+    font-size: 14pt !important;
+    line-height: 1.25 !important;
+    color: #000000 !important;
+  }
+
+  h2 {
+    font-size: 12pt !important;
+    line-height: 1.3 !important;
+    color: #000000 !important;
+  }
+
+  h3 {
+    font-size: 10.5pt !important;
+    line-height: 1.3 !important;
+    color: #000000 !important;
+  }
+
+  p,
+  span,
+  label,
+  div {
+    color: #111827 !important;
+  }
+
+  input,
+  select,
+  textarea {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: #000000 !important;
+    font-size: 9pt !important;
+    padding: 0 !important;
+  }
+
+  /* Structured document tables sized for A4 portrait legibility */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 8.5pt !important;
+    line-height: 1.35 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin-top: 6pt !important;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-row-group;
+  }
+
+  thead th {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-size: 8pt !important;
+    font-weight: 700 !important;
+    border: 0.75pt solid #94a3b8 !important;
+    padding: 4.5pt 5pt !important;
+  }
+
+  tbody td,
+  tfoot td {
+    border: 0.5pt solid #cbd5e1 !important;
+    padding: 4pt 5pt !important;
+    color: #111827 !important;
+    font-size: 8.5pt !important;
+    vertical-align: top !important;
+  }
+
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Expand truncated descriptions so full specifications print on paper */
+  .line-clamp-1,
+  .line-clamp-2,
+  .line-clamp-3 {
+    display: block !important;
+    -webkit-line-clamp: unset !important;
+    overflow: visible !important;
+  }
+}

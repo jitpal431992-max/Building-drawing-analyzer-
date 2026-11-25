@@ -1,0 +1,6 @@
+{
+  "name": "CPWD DSR (E&M) 2025 Explorer & Schedule Reviewer",
+  "description": "Explore, categorize, review, edit, tag, and generate Bill of Quantities (BOQ) from CPWD Delhi Schedule of Rates (E&M) 2025.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
