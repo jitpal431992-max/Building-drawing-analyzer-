@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  FileText,
   CheckCircle2,
   Calculator,
   BookOpen,
@@ -99,12 +98,21 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="w-[96%] sm:w-[92%] lg:w-[80%] mx-auto px-2 sm:px-3">
         {/* Band 1: Ultra-compact Brand + Utility Actions (h-10) */}
         <div className="flex items-center justify-between h-10 gap-3 border-b border-slate-200 dark:border-slate-800/70">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-6 h-6 rounded-md bg-emerald-100 dark:bg-emerald-600/20 border border-emerald-400/60 dark:border-emerald-500/30 flex items-center justify-center text-emerald-700 dark:text-emerald-400 shrink-0">
-              <FileText className="w-3.5 h-3.5" />
+          <button
+            type="button"
+            onClick={() => onViewChange('floor-plan')}
+            className="flex items-center gap-2 min-w-0 group text-left"
+            title="DSR PWD Electrical 2025"
+          >
+            <div className="w-8 h-8 rounded-full overflow-hidden bg-white border border-slate-300 dark:border-slate-600 shadow-xs shrink-0 flex items-center justify-center">
+              <img
+                src="/assets/aistudio/Gemini_Generated_Image_68wrif68wrif68wr_9cde722f.jpeg"
+                alt="DSR PWD Electrical 2025 Logo"
+                className="w-full h-full object-cover object-center scale-[1.36]"
+              />
             </div>
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 shrink-0">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 shrink-0 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors">
                 CPWD DSR 2025
               </span>
               <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
@@ -112,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
                 Delhi Schedule of Rates (E&amp;M) · Electrical Load, MCBDB &amp; BOQ
               </h1>
             </div>
-          </div>
+          </button>
 
           <div className="flex items-center gap-1.5 shrink-0">
             <button
