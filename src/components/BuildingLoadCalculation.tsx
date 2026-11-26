@@ -506,7 +506,10 @@ export const BuildingLoadCalculation: React.FC<BuildingLoadCalculationProps> = (
         'Sl.no.',
         'Floor',
         'Room',
+        'IS:3646 Lux Category',
+        'Target Lux (lx)',
         'Area (m²)',
+        'Lighting #H05–#H09/#H15 (W)',
         'Connected #H05–#H15 (W)',
         `Connected ×${settings.connectedDiversityFactor} (W)`,
         'AC (#H21 × #H22)',
@@ -522,7 +525,10 @@ export const BuildingLoadCalculation: React.FC<BuildingLoadCalculationProps> = (
         i + 1,
         r.floor,
         r.room,
+        r.luxCategoryLabel || '–',
+        r.targetLux > 0 ? r.targetLux : '–',
         Number(r.areaSqm.toFixed(2)),
+        Math.round(r.lightingWatts),
         Math.round(r.connectedWattsTotal),
         Math.round(r.connectedDemandWatts),
         r.acQty > 0 && r.acTonnagePerUnit > 0 ? `${r.acQty} × ${r.acTonnagePerUnit} TR` : '–',
@@ -536,7 +542,7 @@ export const BuildingLoadCalculation: React.FC<BuildingLoadCalculationProps> = (
       ]),
     ];
     const ws3 = XLSX.utils.aoa_to_sheet(roomSheet);
-    ws3['!cols'] = [{ wch: 8 }, { wch: 16 }, { wch: 24 }, ...Array(11).fill({ wch: 19 })];
+    ws3['!cols'] = [{ wch: 8 }, { wch: 16 }, { wch: 24 }, { wch: 30 }, { wch: 14 }, ...Array(12).fill({ wch: 19 })];
 
     const wattageSheet = [
       ['Item-Wise Wattage Table & Building Load Calculation (#H05–#H22)'],
@@ -1258,12 +1264,25 @@ export const BuildingLoadCalculation: React.FC<BuildingLoadCalculationProps> = (
                       {idx + 1}
                     </td>
                     <td className="py-2 px-3 font-sans text-slate-700 dark:text-slate-300">{r.floor}</td>
-                    <td className="py-2 px-3 font-sans font-semibold text-slate-950 dark:text-white">{r.room}</td>
+                    <td className="py-2 px-3 font-sans">
+                      <div className="font-semibold text-slate-950 dark:text-white">{r.room}</div>
+                      {(r.luxCategoryLabel || r.targetLux > 0) && (
+                        <div className="text-[10px] text-amber-700 dark:text-amber-300/90 mt-0.5">
+                          {r.luxCategoryLabel ? r.luxCategoryLabel : 'Custom Lux'}
+                          {r.targetLux > 0 ? ` · ${r.targetLux} lx` : ''}
+                        </div>
+                      )}
+                    </td>
                     <td className="py-2 px-3 text-right text-slate-700 dark:text-slate-300">
                       {r.areaSqm > 0 ? r.areaSqm.toFixed(1) : '–'}
                     </td>
                     <td className="py-2 px-3 text-right text-cyan-700 dark:text-cyan-300">
-                      {Math.round(r.connectedDemandWatts).toLocaleString()}
+                      <div>{Math.round(r.connectedDemandWatts).toLocaleString()}</div>
+                      {r.lightingWatts > 0 && (
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                          Lights: {Math.round(r.lightingWatts).toLocaleString()} W
+                        </div>
+                      )}
                     </td>
                     <td className="py-2 px-3 text-right text-sky-700 dark:text-sky-300">
                       {r.acQty > 0 ? (

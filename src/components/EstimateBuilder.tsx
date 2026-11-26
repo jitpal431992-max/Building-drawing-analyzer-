@@ -47,6 +47,7 @@ interface ExportInventoryCol {
     | 'floor'
     | 'luxCategoryId'
     | 'targetLux'
+    | 'luxAutoSynced'
     | 'acRequired'
     | 'ventType'
     | 'ceilingHeightFt'

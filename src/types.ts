@@ -136,6 +136,7 @@ export interface InventoryRow {
   room: string;
   luxCategoryId?: string;
   targetLux?: string;
+  luxAutoSynced?: boolean;
   acRequired?: 'yes' | 'no';
   ventType?: VentilationRoomType;
   ceilingHeightFt?: string;
@@ -174,6 +175,7 @@ export interface InventoryColumn {
         | 'id'
         | 'luxCategoryId'
         | 'targetLux'
+        | 'luxAutoSynced'
         | 'acRequired'
         | 'ventType'
         | 'ceilingHeightFt'

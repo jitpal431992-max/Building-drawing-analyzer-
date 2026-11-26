@@ -1,4 +1,5 @@
 import { InventoryRow, RawEmergencyColumnKey } from '../types';
+import { getLuxReferenceById } from './luxLevels';
 
 export const FLOOR_OPTIONS: string[] = [
   'Basement-2',
@@ -29,6 +30,7 @@ export interface WattageTableEntry {
     | 'room'
     | 'luxCategoryId'
     | 'targetLux'
+    | 'luxAutoSynced'
     | 'acRequired'
     | 'ventType'
     | 'ceilingHeightFt'
@@ -116,11 +118,23 @@ function nQty(val?: string): number {
   return isNaN(parsed) || parsed < 0 ? 0 : parsed;
 }
 
+const LIGHTING_FIELD_KEYS = new Set<string>([
+  'tube20w',
+  'tube40w',
+  'surfaceLight36w',
+  'recessLight20w',
+  'recessLight36w',
+  'bulbPoint20w',
+]);
+
 export interface RoomLoadCalc {
   rowId: string;
   floor: string;
   room: string;
   areaSqm: number;
+  luxCategoryLabel: string;
+  targetLux: number;
+  lightingWatts: number;
   connectedWattsH05H15: number;
   connectedWattsH16: number;
   connectedWattsTotal: number;
@@ -148,6 +162,12 @@ export function computeRoomBuildingLoad(
   const sqftRaw = nQty(row.sqft);
   const areaSqm = sqmtRaw > 0 ? sqmtRaw : sqftRaw > 0 ? sqftRaw / 10.7639104 : 0;
 
+  const luxRef = getLuxReferenceById(row.luxCategoryId);
+  const targetLuxOverride = nQty(row.targetLux);
+  const targetLux = targetLuxOverride > 0 ? targetLuxOverride : luxRef ? luxRef.recommendedLux : 0;
+  const luxCategoryLabel = luxRef ? `${luxRef.slNo} ${luxRef.label}` : '';
+
+  let lightingWatts = 0;
   let connectedWattsH05H15 = 0;
   let connectedWattsH16 = 0;
   let rawWattsH17H21 = 0;
@@ -168,6 +188,9 @@ export function computeRoomBuildingLoad(
 
     if (entry.fieldKey === 'noOfAc') {
       acWatts = watts;
+    }
+    if (LIGHTING_FIELD_KEYS.has(entry.fieldKey)) {
+      lightingWatts += watts;
     }
 
     if (entry.group === 'connected') {
@@ -204,6 +227,9 @@ export function computeRoomBuildingLoad(
     floor: row.floor || 'Ground Floor',
     room: row.room || 'Unnamed Room',
     areaSqm,
+    luxCategoryLabel,
+    targetLux,
+    lightingWatts,
     connectedWattsH05H15,
     connectedWattsH16,
     connectedWattsTotal,

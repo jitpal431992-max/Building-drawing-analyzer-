@@ -29,9 +29,16 @@ import {
   VentilationRoomType,
 } from '../types';
 import {
+  DEFAULT_LUX_SETTINGS,
   IS_3646_LUX_REFERENCES,
-  LUX_BUILDING_GROUPS,
+  LIGHTING_FIXTURE_KEYS,
+  LIGHTING_FIXTURE_OPTIONS,
+  LightingFixtureKey,
+  LuxCalculationSettings,
+  applyLuxLightsToRow,
+  computeRowLux,
   getLuxReferenceById,
+  resolveLuxReferenceId,
 } from '../data/luxLevels';
 import {
   COOLING_LOAD_REFERENCE_CHART,
@@ -39,6 +46,7 @@ import {
   HvacDesignSettings,
   computeRowHvac,
   inferDefaultAcRequired,
+  inferDefaultExposureType,
   inferVentTypeFromRoom,
 } from '../data/hvacStandards';
 import { FLOOR_OPTIONS } from '../data/wattageTable';
@@ -48,6 +56,7 @@ import {
   createEmptyRow,
 } from '../data/inventorySchema';
 import { LuxReferenceModal } from './LuxReferenceModal';
+import { LuxCategoryDropdown } from './LuxCategoryDropdown';
 import { CoolingLoadChartSection } from './CoolingLoadChartSection';
 
 export { STORAGE_KEY_INVENTORY, INVENTORY_COLUMNS, createEmptyRow };
@@ -184,92 +193,13 @@ function applyHvacSyncToRow(row: InventoryRow, settings: HvacDesignSettings): In
   };
 }
 
-interface LuxCalculationSettings {
-  utilizationFactor: number; // UF (e.g. 0.8)
-  maintenanceFactor: number; // MF (e.g. 0.8)
-  lumenPer20wTube: number;
-  lumenPer40wTube: number;
-  lumenPer36wSurface: number;
-  lumenPer20wRecess: number;
-  lumenPer36wRecess: number;
-  lumenPer20wBulb: number;
-}
-
-const DEFAULT_LUX_SETTINGS: LuxCalculationSettings = {
-  utilizationFactor: 0.8,
-  maintenanceFactor: 0.8,
-  lumenPer20wTube: 2000,
-  lumenPer40wTube: 4000,
-  lumenPer36wSurface: 3600,
-  lumenPer20wRecess: 2000,
-  lumenPer36wRecess: 3600,
-  lumenPer20wBulb: 2000,
-};
+const LIGHTING_FIXTURE_KEY_SET = new Set<string>(LIGHTING_FIXTURE_KEYS);
 
 const INITIAL_ROWS: InventoryRow[] = [
   createEmptyRow('Ground Floor'),
   createEmptyRow('Ground Floor'),
   createEmptyRow('Ground Floor'),
 ];
-
-interface RowLuxCalc {
-  areaSqm: number;
-  targetLux: number;
-  rawLuxAreaLumens: number; // Lux * Area(m2)
-  requiredDesignLumens: number; // (Lux * Area) / (UF * MF)
-  installedLumens: number;
-  achievedLux: number; // (Installed Lumens * UF * MF) / Area(m2)
-  luxGap: number; // achievedLux - targetLux
-  lumenGap: number; // requiredDesignLumens - installedLumens
-  luxRefLabel: string;
-}
-
-function numVal(v?: string): number {
-  if (!v) return 0;
-  const n = parseFloat(v);
-  return isNaN(n) || n < 0 ? 0 : n;
-}
-
-function computeRowLux(row: InventoryRow, settings: LuxCalculationSettings): RowLuxCalc {
-  const sqmtVal = numVal(row.sqmt);
-  const sqftVal = numVal(row.sqft);
-  // Use SQMT if present, otherwise convert Sqft to m² (1 m² = 10.7639 sq.ft)
-  const areaSqm = sqmtVal > 0 ? sqmtVal : sqftVal > 0 ? sqftVal / 10.7639 : 0;
-
-  const ref = getLuxReferenceById(row.luxCategoryId);
-  const overrideLux = numVal(row.targetLux);
-  const targetLux = overrideLux > 0 ? overrideLux : (ref ? ref.recommendedLux : 0);
-
-  const uf = settings.utilizationFactor > 0 ? settings.utilizationFactor : 0.8;
-  const mf = settings.maintenanceFactor > 0 ? settings.maintenanceFactor : 0.8;
-
-  const rawLuxAreaLumens = areaSqm * targetLux;
-  const requiredDesignLumens = rawLuxAreaLumens > 0 ? rawLuxAreaLumens / (uf * mf) : 0;
-
-  const installedLumens =
-    numVal(row.tube20w) * settings.lumenPer20wTube +
-    numVal(row.tube40w) * settings.lumenPer40wTube +
-    numVal(row.surfaceLight36w) * settings.lumenPer36wSurface +
-    numVal(row.recessLight20w) * settings.lumenPer20wRecess +
-    numVal(row.recessLight36w) * settings.lumenPer36wRecess +
-    numVal(row.bulbPoint20w) * settings.lumenPer20wBulb;
-
-  const achievedLux = areaSqm > 0 ? (installedLumens * uf * mf) / areaSqm : 0;
-  const luxGap = achievedLux - targetLux;
-  const lumenGap = requiredDesignLumens - installedLumens;
-
-  return {
-    areaSqm,
-    targetLux,
-    rawLuxAreaLumens,
-    requiredDesignLumens,
-    installedLumens,
-    achievedLux,
-    luxGap,
-    lumenGap,
-    luxRefLabel: ref ? `${ref.slNo} ${ref.label} (${ref.luxDisplay} lx)` : 'Not selected',
-  };
-}
 
 interface InventoryTableProps {
   rows?: InventoryRow[];
@@ -526,7 +456,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
     onNotify?.(`Deleted ${count} selected ${count === 1 ? 'row' : 'rows'}. Serial numbers updated.`);
   };
 
-  // Update individual cell value (with bidirectional SQMT <-> Sqft conversion and HVAC auto-sync)
+  // Update individual cell value (with bidirectional SQMT <-> Sqft conversion, Lux light sizing, and HVAC auto-sync)
   const handleCellChange = (
     rowId: string,
     key: keyof Omit<InventoryRow, 'id'>,
@@ -558,12 +488,21 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
           }
         }
 
+        if (LIGHTING_FIXTURE_KEY_SET.has(key)) {
+          nextRow.luxAutoSynced = false;
+        }
+
         if (key === 'room' && !row.ventType) {
           const inferredVent = inferVentTypeFromRoom(value, row.luxCategoryId);
           if (inferredVent === 'toilet') {
             nextRow.acRequired = 'no';
           }
         }
+
+        if (key === 'sqmt' || key === 'sqft' || key === 'targetLux') {
+          nextRow = applyLuxLightsToRow(nextRow, luxSettings);
+        }
+
         if (autoSyncHvac && !MANUAL_ONLY_FIELDS.has(key)) {
           nextRow = applyHvacSyncToRow(nextRow, hvacSettings);
         }
@@ -631,22 +570,50 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
   // Select room Lux category from IS:3646 dropdown
   const handleLuxCategoryChange = (rowId: string, categoryId: string) => {
-    const ref = getLuxReferenceById(categoryId);
+    const resolvedId = resolveLuxReferenceId(categoryId);
+    const ref = getLuxReferenceById(resolvedId);
     setRows((prev) =>
       prev.map((row) => {
         if (row.id !== rowId) return row;
-        const inferredVent = inferVentTypeFromRoom(row.room, categoryId);
-        const defaultAc = inferDefaultAcRequired(row.room, categoryId);
-        const nextRow: InventoryRow = {
+        const inferredVent = inferVentTypeFromRoom(row.room, resolvedId);
+        const defaultAc = inferDefaultAcRequired(row.room, resolvedId);
+        const inferredExposure = inferDefaultExposureType(resolvedId);
+
+        let nextRow: InventoryRow = {
           ...row,
-          luxCategoryId: categoryId,
+          luxCategoryId: ref ? ref.id : '',
           targetLux: ref ? String(ref.recommendedLux) : '',
-          ventType: row.ventType || inferredVent,
+          ventType: inferredVent,
           acRequired: defaultAc ? 'yes' : 'no',
+          exposureType: inferredExposure,
         };
+
+        nextRow = applyLuxLightsToRow(nextRow, luxSettings);
         return autoSyncHvac ? applyHvacSyncToRow(nextRow, hvacSettings) : nextRow;
       })
     );
+  };
+
+  const handleUpdateLuxSettings = (nextSettings: LuxCalculationSettings) => {
+    setLuxSettings(nextSettings);
+    if (nextSettings.autoFillLightsFromLux) {
+      setRows((prev) =>
+        prev.map((r) => {
+          const withLights = applyLuxLightsToRow(r, nextSettings);
+          return autoSyncHvac ? applyHvacSyncToRow(withLights, hvacSettings) : withLights;
+        })
+      );
+    }
+  };
+
+  const handleSyncAllLuxLights = () => {
+    setRows((prev) =>
+      prev.map((r) => {
+        const withLights = applyLuxLightsToRow(r, luxSettings, { force: true });
+        return autoSyncHvac ? applyHvacSyncToRow(withLights, hvacSettings) : withLights;
+      })
+    );
+    onNotify?.('Synced lighting fixture quantities & building load from IS:3646 Lux targets.');
   };
 
   // Update HVAC settings & optionally re-sync rows
@@ -671,11 +638,15 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
     onNotify?.('Updated #H10–#H14 & #H21–#H22 for selected room.');
   };
 
-  // Drag-and-drop row reordering (automatically updates Sl.no. based on array index)
-  const handleDragStart = (index: number, e: React.DragEvent<HTMLTableRowElement>) => {
+  // Drag-and-drop row reordering (bound strictly to drag handle so native selects/inputs inside rows never get hijacked)
+  const handleDragStart = (index: number, e: React.DragEvent<HTMLElement>) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(index));
+    const tr = e.currentTarget.closest('tr');
+    if (tr && e.dataTransfer.setDragImage) {
+      e.dataTransfer.setDragImage(tr, 24, 18);
+    }
   };
 
   const handleDragOver = (index: number, e: React.DragEvent<HTMLTableRowElement>) => {
@@ -1017,7 +988,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
     // Second sheet: IS 3646 Lux Reference Table
     const refData = [
-      ['Recommended Lux Values For Interior Illumination (As per IS : 3646 Part II - 1966)'],
+      ['Recommended Service Illuminance Values (As per IS : 3646 Part 1 : 1992 & Part II)'],
       [],
       ['Building Group', 'Sl. No.', 'Classification of Building / Room', 'IS:3646 Lux', 'Default Target Lux'],
       ...IS_3646_LUX_REFERENCES.map((r) => [
@@ -1296,8 +1267,8 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
 
             <button
               onClick={() => setIsLuxRefModalOpen(true)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-50 dark:bg-amber-500/15 hover:bg-amber-100 dark:hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 text-[11px] font-semibold border border-amber-300 dark:border-amber-500/30 transition-colors whitespace-nowrap"
-              title="Open IS:3646 (Part II) - 1966 Recommended Lux Reference Chart"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-50 dark:bg-amber-500/15 hover:bg-amber-100 dark:hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 text-[11px] font-semibold border border-amber-300 dark:border-amber-500/30 transition-colors whitespace-nowrap shrink-0"
+              title="Open IS:3646 Recommended Service Illuminance Reference Chart"
             >
               <Sun className="w-3 h-3" />
               <span>IS:3646 Lux</span>
@@ -1593,12 +1564,55 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                 <Sun className="w-3.5 h-3.5" />
                 Lumen Method Parameters: Required Lumens = (Target Lux × Area m²) ÷ (UF × MF)
               </span>
-              <button
-                onClick={() => setLuxSettings(DEFAULT_LUX_SETTINGS)}
-                className="text-[11px] text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white underline"
-              >
-                Reset Defaults
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="inline-flex items-center gap-1.5 cursor-pointer text-slate-700 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={luxSettings.autoFillLightsFromLux}
+                    onChange={(e) =>
+                      handleUpdateLuxSettings({
+                        ...luxSettings,
+                        autoFillLightsFromLux: e.target.checked,
+                      })
+                    }
+                    className="rounded border-slate-400 dark:border-slate-600 bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-500"
+                  />
+                  <span>Auto-fill fixture qty from Lux</span>
+                </label>
+                <div className="inline-flex items-center gap-1.5">
+                  <span className="text-[11px] text-slate-600 dark:text-slate-400">Default Fixture:</span>
+                  <select
+                    value={luxSettings.preferredFixtureKey}
+                    onChange={(e) =>
+                      handleUpdateLuxSettings({
+                        ...luxSettings,
+                        preferredFixtureKey: e.target.value as LightingFixtureKey,
+                      })
+                    }
+                    className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-[11px] text-slate-950 dark:text-white"
+                  >
+                    {LIGHTING_FIXTURE_OPTIONS.map((opt) => (
+                      <option key={opt.key} value={opt.key}>
+                        #{opt.badgeId} {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSyncAllLuxLights}
+                  className="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-semibold whitespace-nowrap shrink-0"
+                >
+                  Sync All Lights to Lux
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateLuxSettings(DEFAULT_LUX_SETTINGS)}
+                  className="text-[11px] text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white underline whitespace-nowrap shrink-0"
+                >
+                  Reset Defaults
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
@@ -1610,7 +1624,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                   min="0.1"
                   max="1"
                   value={luxSettings.utilizationFactor}
-                  onChange={(e) => setLuxSettings({ ...luxSettings, utilizationFactor: parseFloat(e.target.value) || 0.8 })}
+                  onChange={(e) => handleUpdateLuxSettings({ ...luxSettings, utilizationFactor: parseFloat(e.target.value) || 0.8 })}
                   className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 font-mono text-slate-950 dark:text-white"
                 />
               </div>
@@ -1622,7 +1636,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                   min="0.1"
                   max="1"
                   value={luxSettings.maintenanceFactor}
-                  onChange={(e) => setLuxSettings({ ...luxSettings, maintenanceFactor: parseFloat(e.target.value) || 0.8 })}
+                  onChange={(e) => handleUpdateLuxSettings({ ...luxSettings, maintenanceFactor: parseFloat(e.target.value) || 0.8 })}
                   className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 font-mono text-slate-950 dark:text-white"
                 />
               </div>
@@ -1632,7 +1646,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                   type="number"
                   min="0"
                   value={luxSettings.lumenPer20wTube}
-                  onChange={(e) => setLuxSettings({ ...luxSettings, lumenPer20wTube: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => handleUpdateLuxSettings({ ...luxSettings, lumenPer20wTube: parseFloat(e.target.value) || 0 })}
                   className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 font-mono text-slate-950 dark:text-white"
                 />
               </div>
@@ -1642,7 +1656,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                   type="number"
                   min="0"
                   value={luxSettings.lumenPer40wTube}
-                  onChange={(e) => setLuxSettings({ ...luxSettings, lumenPer40wTube: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => handleUpdateLuxSettings({ ...luxSettings, lumenPer40wTube: parseFloat(e.target.value) || 0 })}
                   className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 font-mono text-slate-950 dark:text-white"
                 />
               </div>
@@ -1652,7 +1666,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                   type="number"
                   min="0"
                   value={luxSettings.lumenPer36wSurface}
-                  onChange={(e) => setLuxSettings({ ...luxSettings, lumenPer36wSurface: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => handleUpdateLuxSettings({ ...luxSettings, lumenPer36wSurface: parseFloat(e.target.value) || 0 })}
                   className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 font-mono text-slate-950 dark:text-white"
                 />
               </div>
@@ -1662,7 +1676,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                   type="number"
                   min="0"
                   value={luxSettings.lumenPer20wRecess}
-                  onChange={(e) => setLuxSettings({ ...luxSettings, lumenPer20wRecess: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => handleUpdateLuxSettings({ ...luxSettings, lumenPer20wRecess: parseFloat(e.target.value) || 0 })}
                   className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 font-mono text-slate-950 dark:text-white"
                 />
               </div>
@@ -1672,7 +1686,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                   type="number"
                   min="0"
                   value={luxSettings.lumenPer36wRecess}
-                  onChange={(e) => setLuxSettings({ ...luxSettings, lumenPer36wRecess: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => handleUpdateLuxSettings({ ...luxSettings, lumenPer36wRecess: parseFloat(e.target.value) || 0 })}
                   className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 font-mono text-slate-950 dark:text-white"
                 />
               </div>
@@ -1682,7 +1696,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                   type="number"
                   min="0"
                   value={luxSettings.lumenPer20wBulb}
-                  onChange={(e) => setLuxSettings({ ...luxSettings, lumenPer20wBulb: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => handleUpdateLuxSettings({ ...luxSettings, lumenPer20wBulb: parseFloat(e.target.value) || 0 })}
                   className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 font-mono text-slate-950 dark:text-white"
                 />
               </div>
@@ -2041,13 +2055,12 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                   const calc = rowLuxCalcs[idx];
                   const hCalc = rowHvacCalcs[idx];
                   const luxRef = getLuxReferenceById(row.luxCategoryId);
+                  const resolvedLuxId = luxRef?.id || '';
                   const currentFloor = row.floor || 'Ground Floor';
 
                   return (
                     <tr
                       key={row.id}
-                      draggable={floorFilter === 'ALL'}
-                      onDragStart={(e) => handleDragStart(idx, e)}
                       onDragOver={(e) => handleDragOver(idx, e)}
                       onDrop={(e) => handleDrop(idx, e)}
                       onDragEnd={handleDragEnd}
@@ -2081,6 +2094,8 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                       <td className="py-1.5 px-1.5 border-r border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 sticky left-12 z-10">
                         <div className="flex items-center justify-center gap-0.5">
                           <span
+                            draggable={floorFilter === 'ALL'}
+                            onDragStart={(e) => handleDragStart(idx, e)}
                             className={`p-1 rounded ${
                               floorFilter === 'ALL'
                                 ? 'cursor-grab active:cursor-grabbing text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -2182,24 +2197,12 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                       {visibleColumnIds.has('inv_hdr_lux_category') && (
                         <td
                           headers="inv_hdr_lux_category"
-                          className="p-1 border-r border-slate-200 dark:border-slate-800/80 bg-amber-50/50 dark:bg-amber-950/10"
+                          className="p-1 border-r border-slate-200 dark:border-slate-800/80 bg-amber-50/50 dark:bg-amber-950/10 max-w-[260px]"
                         >
-                          <select
-                            value={row.luxCategoryId || ''}
-                            onChange={(e) => handleLuxCategoryChange(row.id, e.target.value)}
-                            className="w-full bg-white dark:bg-slate-950/90 border border-slate-300 dark:border-slate-800 focus:border-amber-500 rounded px-2 py-1.5 text-xs text-slate-950 dark:text-slate-100 focus:outline-none"
-                          >
-                            <option value="">-- Select IS:3646 Room Type --</option>
-                            {LUX_BUILDING_GROUPS.map((group) => (
-                              <optgroup key={group} label={group}>
-                                {IS_3646_LUX_REFERENCES.filter((r) => r.buildingGroup === group).map((r) => (
-                                  <option key={r.id} value={r.id}>
-                                    {r.slNo} {r.label} ({r.luxDisplay} lx)
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
+                          <LuxCategoryDropdown
+                            value={resolvedLuxId}
+                            onChange={(val) => handleLuxCategoryChange(row.id, val)}
+                          />
                         </td>
                       )}
 
@@ -2214,9 +2217,15 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                               type="number"
                               min="0"
                               step="any"
-                              value={row.targetLux ?? (luxRef ? String(luxRef.recommendedLux) : '')}
+                              value={
+                                row.targetLux === undefined
+                                  ? luxRef
+                                    ? String(luxRef.recommendedLux)
+                                    : ''
+                                  : row.targetLux
+                              }
                               onChange={(e) => handleCellChange(row.id, 'targetLux', e.target.value)}
-                              placeholder="Lux"
+                              placeholder={luxRef ? String(luxRef.recommendedLux) : 'Lux'}
                               className="w-full bg-white dark:bg-slate-950/80 border border-slate-300 dark:border-slate-800 focus:border-amber-500 rounded px-2 py-1 text-xs text-right font-mono text-amber-800 dark:text-amber-300 focus:outline-none"
                             />
                             {luxRef && (

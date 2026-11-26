@@ -1,4 +1,5 @@
 import { CoolingExposureType, InventoryRow, VentilationRoomType } from '../types';
+import { getLuxReferenceById, resolveLuxReferenceId } from './luxLevels';
 
 export interface HvacDesignSettings {
   defaultHeightFt: number;
@@ -104,46 +105,149 @@ export const FAN_EXHAUST_SPECS = [
 
 export function inferVentTypeFromRoom(roomName?: string, luxCategoryId?: string): VentilationRoomType {
   const name = (roomName || '').toLowerCase();
+  const ref = getLuxReferenceById(luxCategoryId);
+  const resolvedId = resolveLuxReferenceId(luxCategoryId);
+  const combinedText = `${name} ${ref?.label || ''} ${ref?.buildingGroup || ''}`.toLowerCase();
+
   if (
-    luxCategoryId === 'home-bathroom' ||
-    /\b(toilet|toilets|wc|w\.c|washroom|bath|bathroom|restroom|lavatory|urinal|powder room)\b/.test(name)
+    resolvedId === 'home-bathroom' ||
+    resolvedId === 'hotel-bathroom' ||
+    resolvedId === 'gen-staff-changing-lavatory' ||
+    /\b(toilet|toilets|wc|w\.c|washroom|bath|bathroom|restroom|lavatory|lavatories|urinal|powder room)\b/.test(
+      combinedText
+    )
   ) {
     return 'toilet';
   }
+
   if (
-    luxCategoryId === 'home-kitchen' ||
-    luxCategoryId === 'school-laboratory' ||
-    luxCategoryId === 'hospital-laboratories' ||
-    /\b(kitchen|pantry|canteen|lab|laboratory)\b/.test(name)
+    resolvedId === 'home-kitchen' ||
+    resolvedId === 'school-laboratory' ||
+    resolvedId === 'hospital-laboratories' ||
+    resolvedId === 'hospital-lab-examination' ||
+    resolvedId === 'hospital-dental-lab' ||
+    resolvedId === 'hospital-pathology-general' ||
+    resolvedId === 'hospital-pathology-exam' ||
+    resolvedId === 'gen-restaurant-kitchen' ||
+    resolvedId === 'gen-restaurant-servery' ||
+    resolvedId === 'hotel-food-prep-corridors' ||
+    resolvedId === 'garage-spray-booths' ||
+    /\b(kitchen|pantry|food preparation|cooking|servery|washing-up|lab|laboratory|laboratories|pathology|spray booths|boiler)\b/.test(
+      combinedText
+    )
   ) {
     return 'kitchen_lab';
   }
+
   return 'general';
 }
+
+const NON_AC_LUX_IDS = new Set([
+  'home-bathroom',
+  'home-stairs',
+  'home-garage',
+  'hotel-bathroom',
+  'hotel-cloak-baggage',
+  'substation-switchroom',
+  'dist-work-stores-general',
+  'dist-work-stores-unpacking',
+  'dist-work-stores-large',
+  'dist-work-stores-small-rack',
+  'dist-warehouse-limited',
+  'dist-warehouse-detail',
+  'dist-highbay-gangway',
+  'dist-highbay-packing',
+  'dist-highbay-loading',
+  'dist-coldstore-general',
+  'dist-coldstore-breakdown',
+  'dist-coldstore-loading',
+  'garage-interior-parking',
+  'garage-repairs',
+  'garage-workbench',
+  'garage-spray-booths',
+  'hospital-corridors-general',
+  'hospital-ward-corr-day-screened',
+  'hospital-ward-corr-day-natural',
+  'hospital-ward-corr-morning-evening',
+  'hospital-ward-corr-night',
+  'hospital-ward-circ-night',
+  'hospital-xray-darkroom',
+  'lib-workroom-remote-store',
+  'gen-entrance-gatehouses',
+  'gen-circ-lifts',
+  'gen-circ-corridors',
+  'gen-circ-escalators',
+  'gen-staff-changing-lavatory',
+  'gen-restaurant-stores',
+  'gen-services-boiler-general',
+  'gen-services-boiler-front',
+  'gen-services-mechanical-plant',
+  'gen-services-electrical-dist',
+  'gen-services-store-rooms',
+  'gen-carpark-covered-floors',
+  'gen-carpark-covered-ramps',
+  'gen-carpark-covered-entrances',
+  'gen-carpark-outdoor',
+]);
 
 export function inferDefaultAcRequired(roomName?: string, luxCategoryId?: string): boolean {
   const vent = inferVentTypeFromRoom(roomName, luxCategoryId);
   if (vent === 'toilet') return false;
-  const nonAcCats = new Set([
-    'home-bathroom',
-    'home-stairs',
-    'home-garage',
-    'office-corridor-lift',
-    'office-stairs',
-    'office-lift-landing',
-    'school-corridor',
-    'school-stairs',
-    'hospital-stairs-corridors',
-    'substation-switchroom',
-    'cinema-corridors',
-    'cinema-stairs',
-  ]);
-  if (luxCategoryId && nonAcCats.has(luxCategoryId)) return false;
+
+  const resolvedId = resolveLuxReferenceId(luxCategoryId);
+  if (resolvedId && NON_AC_LUX_IDS.has(resolvedId)) return false;
+
+  const ref = getLuxReferenceById(luxCategoryId);
+  const label = (ref?.label || '').toLowerCase();
+  if (
+    /\b(corridor|corridors|stair|stairs|car park|parking|gangway|loading bay|cold store|boiler|garage|lift|lifts|escalator|cellar|store room|gatehouse)\b/.test(
+      label
+    )
+  ) {
+    return false;
+  }
+
   const name = (roomName || '').toLowerCase();
-  if (/\b(corridor|stair|stairs|staircase|passage|lobby|garage|store|parking|balcony|verandah|shaft)\b/.test(name)) {
+  if (
+    /\b(corridor|stair|stairs|staircase|passage|lobby|garage|store|parking|balcony|verandah|shaft)\b/.test(
+      name
+    )
+  ) {
     return false;
   }
   return true;
+}
+
+export function inferDefaultExposureType(luxCategoryId?: string): CoolingExposureType {
+  const resolvedId = resolveLuxReferenceId(luxCategoryId);
+  if (!resolvedId) return 'normal';
+  if (
+    resolvedId.includes('ot-') ||
+    resolvedId.includes('icu-') ||
+    resolvedId.includes('lab') ||
+    resolvedId.includes('pathology') ||
+    resolvedId.includes('anaesthetic') ||
+    resolvedId.includes('surgeries') ||
+    resolvedId.includes('computer') ||
+    resolvedId.includes('control') ||
+    resolvedId.includes('switchboard')
+  ) {
+    return 'server-ot';
+  }
+  if (
+    resolvedId.includes('conference') ||
+    resolvedId.includes('assembly') ||
+    resolvedId.includes('lecture') ||
+    resolvedId.includes('seminar') ||
+    resolvedId.includes('teaching') ||
+    resolvedId.includes('auditorium') ||
+    resolvedId.includes('sports') ||
+    resolvedId.includes('canteen') ||
+    resolvedId.includes('bars-dining')
+  ) {
+    return 'high-load';
+  }
+  return 'normal';
 }
 
 export interface RowHvacCalc {
